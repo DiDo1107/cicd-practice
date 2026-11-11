@@ -1,0 +1,10 @@
+.git
+.github
+.circleci
+.venv
+__pycache__
+*.pyc
+tests
+helm
+jenkins
+db

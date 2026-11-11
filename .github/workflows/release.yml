@@ -1,0 +1,50 @@
+# Кейс 7: автоматический релиз при пуше тега v*, changelog + артефакты
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # нужна вся история для changelog
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run tests
+        run: |
+          pip install -r requirements-dev.txt
+          pytest
+
+      - name: Generate changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          if [ -n "$PREV_TAG" ]; then RANGE="$PREV_TAG..$GITHUB_REF_NAME"; else RANGE="$GITHUB_REF_NAME"; fi
+          {
+            echo "## Изменения в $GITHUB_REF_NAME"
+            echo
+            git log $RANGE --pretty=format:"- %s (%h, %an)" --no-merges
+          } > CHANGELOG.md
+          cat CHANGELOG.md
+
+      - name: Build artifacts
+        run: |
+          mkdir dist
+          tar -czf dist/cicd-practice-${GITHUB_REF_NAME}.tar.gz app requirements.txt Dockerfile Procfile
+          (cd dist && sha256sum * > SHA256SUMS.txt)
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: CHANGELOG.md
+          files: dist/*

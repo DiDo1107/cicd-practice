@@ -1,0 +1,15 @@
+# Запуск: docker compose -f jenkins/docker-compose.yml up -d --build
+# Открыть http://localhost:8080, пароль: docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+services:
+  jenkins:
+    build: .
+    container_name: jenkins
+    user: root  # упрощение для учебного стенда: доступ к docker.sock
+    ports:
+      - "8080:8080"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  jenkins_home:

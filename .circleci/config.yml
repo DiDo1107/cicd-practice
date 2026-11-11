@@ -1,0 +1,44 @@
+# Кейс 3: сборка и деплой на Heroku при пуше в main
+version: 2.1
+
+orbs:
+  heroku: circleci/heroku@2.0.0
+
+jobs:
+  build-and-test:
+    docker:
+      - image: cimg/python:3.12
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - pip-{{ checksum "requirements-dev.txt" }}
+      - run:
+          name: Install dependencies
+          command: pip install -r requirements-dev.txt
+      - save_cache:
+          key: pip-{{ checksum "requirements-dev.txt" }}
+          paths:
+            - ~/.cache/pip
+      - run:
+          name: Lint
+          command: flake8 .
+      - run:
+          name: Unit tests
+          command: |
+            mkdir -p test-results
+            pytest -v --junitxml=test-results/junit.xml
+      - store_test_results:
+          path: test-results
+
+workflows:
+  build-deploy:
+    jobs:
+      - build-and-test
+      # Нужны переменные окружения проекта CircleCI: HEROKU_API_KEY и HEROKU_APP_NAME
+      - heroku/deploy-via-git:
+          requires:
+            - build-and-test
+          filters:
+            branches:
+              only: main

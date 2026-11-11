@@ -1,0 +1,36 @@
+# Кейс 9: анализ качества и безопасности кода при каждом коммите
+name: Security & Quality
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # SonarCloud нужна полная история
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tools
+        run: pip install -r requirements-dev.txt bandit pip-audit
+
+      - name: Tests with coverage
+        run: pytest --cov=app --cov-report=xml
+
+      - name: Bandit (уязвимости в коде)
+        run: bandit -r app
+
+      - name: pip-audit (уязвимые зависимости)
+        run: pip-audit -r requirements.txt
+
+      - name: SonarCloud scan
+        if: env.SONAR_TOKEN != ''
+        uses: SonarSource/sonarqube-scan-action@v5

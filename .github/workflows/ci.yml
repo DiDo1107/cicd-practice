@@ -1,0 +1,70 @@
+# Кейс 1: сборка при каждом коммите
+# Кейс 6: уведомление о статусе пайплайна в Slack / на почту
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: flake8 .
+
+      - name: Unit tests
+        run: pytest -v
+
+      - name: Build Docker image
+        run: docker build -t cicd-practice:${{ github.sha }} .
+
+      - name: Smoke test container
+        run: |
+          docker run -d --name app -p 5000:5000 cicd-practice:${{ github.sha }}
+          sleep 5
+          curl --fail http://localhost:5000/health
+
+  notify:
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
+    steps:
+      - name: Slack notification
+        if: env.SLACK_WEBHOOK_URL != ''
+        run: |
+          if [ "${{ needs.build.result }}" = "success" ]; then ICON="✅"; else ICON="❌"; fi
+          curl -X POST -H 'Content-type: application/json' "$SLACK_WEBHOOK_URL" --data @- <<EOF
+          {"text": "$ICON *${{ github.repository }}*: пайплайн ${{ needs.build.result }}\nВетка: ${{ github.ref_name }}, коммит: ${{ github.sha }}\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}
+          EOF
+
+      - name: Email notification
+        if: env.MAIL_USERNAME != ''
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "[${{ github.repository }}] CI: ${{ needs.build.result }}"
+          to: ${{ secrets.MAIL_TO }}
+          from: GitHub Actions <${{ secrets.MAIL_USERNAME }}>
+          body: |
+            Статус: ${{ needs.build.result }}
+            Ветка: ${{ github.ref_name }}
+            Коммит: ${{ github.sha }}
+            Лог: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

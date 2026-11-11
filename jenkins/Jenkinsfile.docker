@@ -1,0 +1,44 @@
+// Кейс 4: сборка Docker-образа и отправка в Docker Hub при каждом коммите
+// В Jenkins нужны credentials типа "Username with password" с ID "dockerhub"
+pipeline {
+    agent any
+
+    triggers {
+        // Проверять репозиторий раз в минуту (если нет webhook'а от GitHub)
+        pollSCM('* * * * *')
+    }
+
+    environment {
+        IMAGE_NAME = 'cicd-practice'
+    }
+
+    stages {
+        stage('Build image') {
+            steps {
+                sh 'docker build -t $IMAGE_NAME:$GIT_COMMIT .'
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub',
+                                                  usernameVariable: 'DOCKER_USER',
+                                                  passwordVariable: 'DOCKER_PASS')]) {
+                    sh '''
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        docker tag $IMAGE_NAME:$GIT_COMMIT $DOCKER_USER/$IMAGE_NAME:$GIT_COMMIT
+                        docker tag $IMAGE_NAME:$GIT_COMMIT $DOCKER_USER/$IMAGE_NAME:latest
+                        docker push $DOCKER_USER/$IMAGE_NAME:$GIT_COMMIT
+                        docker push $DOCKER_USER/$IMAGE_NAME:latest
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            sh 'docker logout || true'
+        }
+    }
+}

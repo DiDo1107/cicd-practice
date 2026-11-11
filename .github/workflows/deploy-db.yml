@@ -1,0 +1,56 @@
+# Кейс 10: применение миграций БД (Flyway) при каждом развертывании
+name: Deploy with DB migrations
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    services:
+      # В учебных целях БД поднимается прямо в пайплайне.
+      # Для реальной БД уберите services и задайте секреты DB_URL / DB_USER / DB_PASSWORD.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: appdb
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB_URL: ${{ secrets.DB_URL || 'jdbc:postgresql://localhost:5432/appdb' }}
+      DB_USER: ${{ secrets.DB_USER || 'app' }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD || 'app' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Flyway info (до миграций)
+        run: |
+          docker run --rm --network host -v "$PWD/db/migrations:/flyway/sql" redgate/flyway:10 \
+            -url="$DB_URL" -user="$DB_USER" -password="$DB_PASSWORD" info
+
+      - name: Flyway migrate
+        run: |
+          docker run --rm --network host -v "$PWD/db/migrations:/flyway/sql" redgate/flyway:10 \
+            -url="$DB_URL" -user="$DB_USER" -password="$DB_PASSWORD" migrate
+
+      - name: Flyway validate
+        run: |
+          docker run --rm --network host -v "$PWD/db/migrations:/flyway/sql" redgate/flyway:10 \
+            -url="$DB_URL" -user="$DB_USER" -password="$DB_PASSWORD" validate
+
+      - name: Deploy application
+        run: |
+          docker build -t cicd-practice:${{ github.sha }} .
+          docker run -d --name app --network host cicd-practice:${{ github.sha }}
+          sleep 5
+          curl --fail http://localhost:5000/health
+          echo "Приложение развернуто, миграции применены"
