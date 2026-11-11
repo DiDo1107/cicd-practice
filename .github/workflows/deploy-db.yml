@@ -30,7 +30,7 @@ jobs:
       DB_USER: ${{ secrets.DB_USER || 'app' }}
       DB_PASSWORD: ${{ secrets.DB_PASSWORD || 'app' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Flyway info (до миграций)
         run: |
